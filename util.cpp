@@ -387,5 +387,21 @@ std::ostream& operator <<(std::ostream& os, const Matrix4x4& M) {
 		<< M[3][2] << " " << M[3][3] << "]";
 }
 
+// source points away from intersection
+Ray3D Ray3D::reflectionRay(Vector3D source_dir)
+{
+	source_dir.normalize();
 
+	// reflection direction
+	Vector3D normal = intersection.normal;
+	Vector3D reflect_dir = 2 * (source_dir.dot(normal)) * normal - source_dir;
+	reflect_dir.normalize();
 
+	// reflectRay
+	Ray3D reflectionRay;
+	reflectionRay.origin = intersection.point;
+	reflectionRay.dir = reflect_dir;
+	reflectionRay.dir.normalize();
+
+	return reflectionRay;
+}

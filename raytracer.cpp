@@ -185,9 +185,18 @@ void Raytracer::computeShading( Ray3D& ray ) {
 		if (curLight == NULL) break;
 		// Each lightSource provides its own shading function.
 
-		// Implement shadows here if needed.
-
+		// shade camera ray
 		curLight->light->shade(ray);
+
+		// shadow
+		Vector3D light_dir = curLight->light->get_position() - ray.intersection.point;
+		light_dir.normalize();
+		Ray3D shadowRay(ray.intersection.point, light_dir);
+
+		traverseScene(_root, shadowRay);
+		if (!shadowRay.intersection.none)
+			ray.col = ray.intersection.mat->ambient;
+		
 		curLight = curLight->next;
 	}
 }
@@ -213,22 +222,38 @@ void Raytracer::flushPixelBuffer( char *file_name ) {
 	delete _bbuffer;
 }
 
-Colour Raytracer::shadeRay( Ray3D& ray ) {
-	Colour col(0.0, 0.0, 0.0); 
+
+Colour Raytracer::shadeRay( Ray3D& ray, int depth ) {
+	Colour col(0.0, 0.0, 0.0);
 	traverseScene(_root, ray); 
 	
 	// Don't bother shading if the ray didn't hit 
 	// anything.
 	if (!ray.intersection.none) {
-		computeShading(ray); 
-		col = ray.col;  
+		computeShading(ray);
+		col = ray.col;
+
+		// specular reflection
+		Colour reflectCol(0.0, 0.0, 0.0);
+		double specularity = ray.intersection.mat->specularity;
+		if (depth < MAXDEPTH && specularity > 0)
+		{
+			Ray3D reflectionRay = ray.reflectionRay(-ray.dir);
+			// recursive call
+			reflectCol = shadeRay(reflectionRay, depth + 1);
+		}
+		col = (1 - specularity) * col + specularity * reflectCol;
+	}
+	else
+	{ // background color
+		col = Colour(0, 0, 0);
 	}
 
 	// You'll want to call shadeRay recursively (with a different ray, 
 	// of course) here to implement reflection/refraction effects.  
 
 	return col; 
-}	
+}
 
 void Raytracer::render( int width, int height, Point3D eye, Vector3D view, 
 		Vector3D up, double fov, char* fileName ) {
@@ -250,20 +275,34 @@ void Raytracer::render( int width, int height, Point3D eye, Vector3D view,
 			imagePlane[0] = (-double(width)/2 + 0.5 + j)/factor;
 			imagePlane[1] = (-double(height)/2 + 0.5 + i)/factor;
 			imagePlane[2] = -1;
-
-			// TODO: Convert ray to world space and call 
-			// shadeRay(ray) to generate pixel colour. 	
 			
-			Ray3D ray;
-			ray.origin = eye;
-			ray.dir = (viewToWorld * (imagePlane - origin));
-			ray.dir.normalize();
+			// anti-aliasing (2*2)
+			Colour average(0, 0, 0);
+			for (int k = -0; k <= 1; k += 2) {
+				for (int h = -0; h <= 1; h += 2) {
+					Point3D multiSample;
+					double r = 0.5/2; //(double)rand() / (RAND_MAX) / 2; // 0 ~ 0.5
+					multiSample[0] = imagePlane[0] + r * k /factor;
+					r = 0.5/2; //(double)rand() / (RAND_MAX) / 2; // 0 ~ 0.5
+					multiSample[1] = imagePlane[1] + r * h /factor;
+					multiSample[2] = -1;
 
-			Colour col = shadeRay(ray); 
+					// TODO: Convert ray to world space and call 
+					// shadeRay(ray) to generate pixel colour. 	
+					Ray3D ray;
+					ray.origin = eye;
+					ray.dir = (viewToWorld * (multiSample - origin));
+					ray.dir.normalize();
 
-			_rbuffer[i*width+j] = int(col[0]*255);
-			_gbuffer[i*width+j] = int(col[1]*255);
-			_bbuffer[i*width+j] = int(col[2]*255);
+					Colour col = shadeRay(ray, 0);
+					average = average + col;
+				}
+			}
+			average = 1.0 * average;
+
+			_rbuffer[i*width+j] = int(average[0]*255);
+			_gbuffer[i*width+j] = int(average[1]*255);
+			_bbuffer[i*width+j] = int(average[2]*255);
 			/*
 			if (ray.intersection.none)
 				std::cout << ".";
@@ -277,6 +316,11 @@ void Raytracer::render( int width, int height, Point3D eye, Vector3D view,
 	flushPixelBuffer(fileName);
 }
 
+void setupScene(Raytracer &raytracer)
+{
+	//return raytracer;
+}
+
 int main(int argc, char* argv[])
 {	
 	// Build your scene and setup your camera here, by calling 
@@ -285,8 +329,8 @@ int main(int argc, char* argv[])
 	// change this if you're just implementing part one of the 
 	// assignment.  
 	Raytracer raytracer;
-	int width = 400; 
-	int height = 400; 
+	int width = 200; 
+	int height = 200; 
 
 	if (argc == 3) {
 		width = atoi(argv[1]);
@@ -298,36 +342,38 @@ int main(int argc, char* argv[])
 	Vector3D view(0, 0, -1);
 	Vector3D up(0, 1, 0);
 	double fov = 60;
-
+	
 	// Defines a material for shading.
 	Material gold( Colour(0.3, 0.3, 0.3), Colour(0.75164, 0.60648, 0.22648), 
 			Colour(0.628281, 0.555802, 0.366065), 
-			51.2 );
-	Material jade( Colour(0, 0, 0), Colour(0.54, 0.89, 0.63), 
+			51.2, 0 );
+	Material jade( Colour(0.0, 0.0, 0.0), Colour(0.54, 0.89, 0.63), 
 			Colour(0.316228, 0.316228, 0.316228), 
-			12.8 );
+			12.8, 0 );
+	Material reflective(Colour(0.3, 0.3, 0.3), Colour(0.2, 0.2, 0.5),
+		Colour(0.628281, 0.555802, 0.366065),
+		51.2, 0.5);
 
 	// Defines a point light source.
-	raytracer.addLightSource( new PointLight(Point3D(0, 0, 5), 
+	raytracer.addLightSource( new PointLight(Point3D(0, 4, 0), 
 				Colour(0.9, 0.9, 0.9) ) );
 
 	// sphere
-	SceneDagNode* sphere = raytracer.addObject( new UnitSphere(), &gold );
-	raytracer.translate(sphere, Vector3D(0, 0, 0));	
-	double factor1[3] = { 2.0, 1.0, 1.0 };
+	SceneDagNode* sphere = raytracer.addObject(new UnitSphere(), &gold);
+	raytracer.translate(sphere, Vector3D(0, -1, 0));	
+	double factor1[3] = { 1.0, 1.0, 1.0 };
 	raytracer.scale(sphere, Point3D(0, 0, 0), factor1);
-
-	SceneDagNode* sphere2 = raytracer.addObject(new UnitSphere(), &gold);
+	
+	SceneDagNode* sphere2 = raytracer.addObject(new UnitSphere(), &reflective);
 	raytracer.translate(sphere2, Vector3D(-1, 1, -1));
 	
 	double f = 4;
 	double factor2[3] = { f, f, f };
 	// floor
 	SceneDagNode* floor = raytracer.addObject(new UnitSquare(), &jade);
-	raytracer.scale(floor, Point3D(0, 0, 0), factor2);
 	raytracer.translate(floor, Vector3D(0, -2, 0));
 	raytracer.rotate(floor, 'x', 90);
-	
+	raytracer.scale(floor, Point3D(0, 0, 0), factor2);
 
 	// backWall
 	SceneDagNode* backWall = raytracer.addObject(new UnitSquare(), &jade);
@@ -340,7 +386,7 @@ int main(int argc, char* argv[])
 	raytracer.translate(leftWall, Vector3D(-2, 0, 0));
 	raytracer.rotate(leftWall, 'y', -90);
 	raytracer.scale(leftWall, Point3D(0, 0, 0), factor2);
-
+	
 	// Render the scene, feel free to make the image smaller for
 	// testing purposes.	
 	raytracer.render(width, height, eye, view, up, fov, "view1.bmp");

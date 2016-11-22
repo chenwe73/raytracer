@@ -32,8 +32,7 @@ void PointLight::shade( Ray3D& ray ) {
 	Vector3D light_dir = get_position() - ray.intersection.point;
 	light_dir.normalize();
 	// reflection
-	Vector3D reflect_dir = 2 * (light_dir.dot(normal)) 
-		* normal - light_dir;
+	Vector3D reflect_dir = 2 * (light_dir.dot(normal)) * normal - light_dir;
 	reflect_dir.normalize();
 	// vision
 	Vector3D vision_dir = -ray.dir;
