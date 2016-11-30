@@ -15,6 +15,8 @@
 #include "scene_object.h"
 #include "light_source.h"
 
+#include <time.h>
+
 // Linked list containing light sources in the scene.
 struct LightListNode {
 	LightListNode() : light(NULL), next(NULL) {}
@@ -144,18 +146,22 @@ private:
 	Matrix4x4 _worldToModel;
 };
 
-int width = 1000;
-int height = 1000;
+
+clock_t t;
+clock_t tt;
+
+int width = 400;
+int height = 400;
 
 const double REFLECTION_OFFSET = 0.00001; // remove shadow acne
 const double MIN_SPECULARITY = 0.00001;
 const double MIN_REFRACTIVITY = 0.00001;
 
-const int MAXDEPTH = 3;
-const int ANTIALIASING_SAMPLE = 2; // n*n per pixel
+const int MAXDEPTH = 5;
+const int ANTIALIASING_SAMPLE = 1; // n*n per pixel
 
-const int REFLECTION_SAMPLE = 5;
-const double REFLECTION_SAMPLE_SQUARE_WIDTH = 0.4; // material dependent
+const int REFLECTION_SAMPLE = 4;
+const double REFLECTION_SAMPLE_SQUARE_WIDTH = 0.0; // material dependent
 
 const int SHADOW_SAMPLE = 10;
 const double LIGHT_SQAURE_WIDTH = 4;
@@ -184,7 +190,7 @@ Material jade(Colour(0.01, 0.01, 0.01), Colour(0.54, 0.89, 0.63),
 const Colour LIGHT_COLOR = Colour(1, 1, 1);
 const Colour DARK_COLOR = Colour(0, 0, 0);
 Material mirror(DARK_COLOR, DARK_COLOR, LIGHT_COLOR, 50, 1, 0);
-Material glass(DARK_COLOR, DARK_COLOR, LIGHT_COLOR, 50, 0.0, 1);
+Material glass(DARK_COLOR, DARK_COLOR, LIGHT_COLOR, 50, 1, 1);
 Material light_mat(LIGHT_COLOR, LIGHT_COLOR, LIGHT_COLOR, 0, 0, 0);
 Material white(Colour(0.1, 0.1, 0.1), Colour(0.9, 0.9, 0.9),
 	Colour(0.9, 0.9, 0.9), 10, 0, 0);

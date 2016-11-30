@@ -213,8 +213,8 @@ void Raytracer::computeShading( Ray3D& ray ) {
 		}
 		if (SHADOW_SAMPLE > 0)
 		{
-			double shadow_scale = (double)hit / SHADOW_SAMPLE; // 0 ~ 1
-			ray.col = (1 - shadow_scale) * ray.col + (shadow_scale)* ray.intersection.mat->ambient;
+			double r = (double)hit / SHADOW_SAMPLE; // 0 ~ 1
+			ray.col = (1 - r) * ray.col + (r)* ray.intersection.mat->ambient;
 		}
 		curLight = curLight->next;
 	}
@@ -246,22 +246,26 @@ Colour Raytracer::shadeRay( Ray3D& ray, int depth ) {
 	Colour col(0.0, 0.0, 0.0);
 	traverseScene(_root, ray); 
 	
-	// Don't bother shading if the ray didn't hit 
-	// anything.
+	// Don't bother shading if the ray didn't hit anything.
 	if (!ray.intersection.none) {
 		computeShading(ray);
 		col = ray.col;
 
-		Colour reflectCol = ray.col;
-		Colour refractCol = ray.col;
+		Colour reflectCol = Colour(0, 0, 0);
+		Colour refractCol = Colour(0, 0, 0);
 		double specularity = ray.intersection.mat->specularity;
 		double refractivity = ray.intersection.mat->refractivity;
+
+		Vector3D normal = ray.intersection.normal;
+		normal.normalize();
+		Vector3D incident = ray.dir;
+		incident.normalize();
 
 		if (depth < MAXDEPTH)
 		{
 			if (specularity > MIN_SPECULARITY)
 			{
-				Vector3D reflect_dir = reflect(ray.intersection.normal, -ray.dir);
+				Vector3D reflect_dir = reflect(normal, -incident);
 
 				// sample square
 				Vector3D reflect_u = reflect_dir.cross(Vector3D(1, 0, 0));
@@ -280,25 +284,23 @@ Colour Raytracer::shadeRay( Ray3D& ray, int depth ) {
 					// reflectionRay
 					Ray3D reflectRay;
 					reflectRay.origin =
-						ray.intersection.point + REFLECTION_OFFSET * ray.intersection.normal; // acne
+						ray.intersection.point + REFLECTION_OFFSET * normal; // acne
 					reflectRay.dir = reflect_dir_sample;
 					reflectRay.dir.normalize();
 
 					// recursive call
 					reflectCol = reflectCol + shadeRay(reflectRay, depth + 1);
 				}
+
 				reflectCol = 1.0 / REFLECTION_SAMPLE * reflectCol;
+				col = (1 - specularity) * col + specularity * reflectCol;
 			}
 
 			if (refractivity > MIN_REFRACTIVITY)
 			{
-				Vector3D incident = ray.dir;
-				incident.normalize();
-				Vector3D normal = ray.intersection.normal;
-				normal.normalize();
+				const double Nt = 1.5;
 				double cosA = incident.dot(normal);
 
-				const double Nt = 1.5;
 				Vector3D refract_dir;
 				double c;
 				if (cosA < 0)
@@ -309,6 +311,7 @@ Colour Raytracer::shadeRay( Ray3D& ray, int depth ) {
 				else
 				{
 					refract_dir = refract(-normal, incident, 1.0 / Nt);
+					c = refract_dir.dot(normal);
 				}
 
 				// refractRay
@@ -317,19 +320,20 @@ Colour Raytracer::shadeRay( Ray3D& ray, int depth ) {
 				refractRay.dir = refract_dir;
 				refractRay.dir.normalize();
 
-				refractCol = refractCol + shadeRay(refractRay, depth + 1);
+				refractCol = shadeRay(refractRay, depth + 1);
+
+				double R0 = ((Nt - 1) * (Nt - 1)) / ((Nt + 1) * (Nt + 1));
+				double d = 1 - c;
+				double R = R0 + (1 - R0) * (d*d*d*d*d);
+
+				col = (R * reflectCol + (1 - R) * refractCol);
 			}
 		}
-		col = (1 - specularity - refractivity) * col + specularity * reflectCol + refractivity * refractCol;
 	}
 	else
 	{ // background color
 		col = Colour(0, 0, 0);
 	}
-
-	// You'll want to call shadeRay recursively (with a different ray, 
-	// of course) here to implement reflection/refraction effects. 
-	col.clamp();
 
 	return col; 
 }
@@ -398,7 +402,12 @@ void Raytracer::render( int width, int height, Point3D eye, Vector3D view,
 			_gbuffer[i*width + j] = int(antialias_col[1] * 255);
 			_bbuffer[i*width + j] = int(antialias_col[2] * 255);
 		}
-		std::cout << i << "\n";
+
+		double time = (double)(clock() - t) / CLOCKS_PER_SEC;
+		t = clock();
+		double total_time = (double)(clock() - tt) / CLOCKS_PER_SEC;
+		std::cout << "row = " << i << " | " << "row time = " << time 
+			<< " | " << "totoal time = " << total_time << "\n";
 	}
 
 	flushPixelBuffer(fileName);
@@ -411,6 +420,7 @@ void setupScene(Raytracer &raytracer)
 
 int main(int argc, char* argv[])
 {
+	tt = clock();
 	refract(Vector3D(1, 0, 0), Vector3D(-0.1, -1, 0), 1.0 / 1.5);
 	// Build your scene and setup your camera here, by calling 
 	// functions from Raytracer.  The code here sets up an example
@@ -429,17 +439,17 @@ int main(int argc, char* argv[])
 
 	// sphere
 	double factor1[3] = { 2.0, 2.0, 2.0 };
-	SceneDagNode* sphere = raytracer.addObject(new UnitSphere(), &mirror);
-	raytracer.translate(sphere, Vector3D(1.5, -2, 0));	
+	SceneDagNode* sphere = raytracer.addObject(new UnitSphere(), &glass);
+	raytracer.translate(sphere, Vector3D(3, -2, 0));	
 	raytracer.scale(sphere, Point3D(0, 0, 0), factor1);
 	
 	SceneDagNode* sphere2 = raytracer.addObject(new UnitSphere(), &mirror);
 	raytracer.translate(sphere2, Vector3D(-2, 0, -2));
 	raytracer.scale(sphere2, Point3D(0, 0, 0), factor1);
 
-	SceneDagNode* sphere3 = raytracer.addObject(new UnitSphere(), &ruby);
-	raytracer.translate(sphere3, Vector3D(2, 2, -4));
-	raytracer.scale(sphere3, Point3D(0, 0, 0), factor1);
+	//SceneDagNode* sphere3 = raytracer.addObject(new UnitSphere(), &ruby);
+	//raytracer.translate(sphere3, Vector3D(2, 2, -4));
+	//raytracer.scale(sphere3, Point3D(0, 0, 0), factor1);
 	
 	double f = 10;
 	double factor2[3] = { f+1, f+1, f+1 };
