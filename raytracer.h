@@ -150,20 +150,20 @@ private:
 clock_t t;
 clock_t tt;
 
-int width = 400;
-int height = 400;
+int width = 1000;
+int height = 1000;
 
 const double REFLECTION_OFFSET = 0.00001; // remove shadow acne
 const double MIN_SPECULARITY = 0.00001;
 const double MIN_REFRACTIVITY = 0.00001;
 
-const int MAXDEPTH = 5;
-const int ANTIALIASING_SAMPLE = 1; // n*n per pixel
+const int MAXDEPTH = 6;
+const int ANTIALIASING_SAMPLE = 2; // n*n per pixel
 
-const int REFLECTION_SAMPLE = 4;
+const int REFLECTION_SAMPLE = 1;
 const double REFLECTION_SAMPLE_SQUARE_WIDTH = 0.0; // material dependent
 
-const int SHADOW_SAMPLE = 10;
+const int SHADOW_SAMPLE = 1;
 const double LIGHT_SQAURE_WIDTH = 4;
 const Vector3D LIGHT_U = Vector3D(1, 0, 0);
 const Vector3D LIGHT_V = Vector3D(0, 0, 1);
