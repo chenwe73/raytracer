@@ -129,9 +129,10 @@ Colour operator +(const Colour& u, const Colour& v);
 std::ostream& operator <<(std::ostream& o, const Colour& c); 
 
 struct Material {
-	Material(Colour ambient, Colour diffuse, Colour specular, double exp, double specularity) :
+	Material(Colour ambient, Colour diffuse, Colour specular, double exp, 
+		double specularity, double refractivity) :
 		ambient(ambient), diffuse(diffuse), specular(specular), 
-		specular_exp(exp), specularity(specularity) {}
+		specular_exp(exp), specularity(specularity), refractivity(refractivity){}
 	
 	// Ambient components for Phong shading.
 	Colour ambient; 
@@ -143,6 +144,7 @@ struct Material {
 	double specular_exp;
 
 	double specularity;
+	double refractivity;
 };
 
 struct Intersection {
@@ -178,12 +180,5 @@ struct Ray3D {
 	// Current colour of the ray, should be computed by the shading
 	// function.
 	Colour col;
-
-	Ray3D reflectionRay(Vector3D source_dir);
 };
 #endif
-
-
-
-
-

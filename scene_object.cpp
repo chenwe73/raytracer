@@ -93,22 +93,31 @@ bool UnitSphere::intersect( Ray3D& ray, const Matrix4x4& worldToModel,
 	double distanceFactor = ray.dir.length() / ray_dir_model.length();
 	ray_dir_model.normalize();
 	
-	
 	// find the shortest distance from ray to sphere_center
 	double t1 = (sphere_center - ray_origin_model).dot(ray_dir_model);
 	Point3D closest_point = ray_origin_model + t1 * ray_dir_model;
 	double d = (closest_point - sphere_center).length();
-	double t_model = t1 - sqrt(radius - d*d); // subtract to get the closer solution
-	double t_world = t_model * distanceFactor;
 
+	// is the ray aligned with sphere
+	bool is_intersect = (d <= radius);
+	if (!is_intersect)
+		return false;
+
+	double t_model = t1 - sqrt(radius * radius - d * d); // subtract to get the closer solution
+	
 	// intersection is behind camera
 	if (t_model <= 0)
-		return false;
+	{
+		t_model = t1 + sqrt(radius * radius - d * d); // inside sphere
+		if (t_model <= 0) // outside sphere
+			return false;
+	}
+
+	double t_world = t_model * distanceFactor;
 	
 	// is the intersection is further than previous intersection
 	bool is_further_intersection = (ray.intersection.none == false) && (t_world > ray.intersection.t_value);
-	bool is_intersect = (d <= radius);
-	if (!is_intersect || is_further_intersection)
+	if (is_further_intersection)
 		return false;
 	
 	Point3D intPoint_model = ray_origin_model + t_model * ray_dir_model;
