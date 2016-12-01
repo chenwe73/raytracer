@@ -130,9 +130,10 @@ std::ostream& operator <<(std::ostream& o, const Colour& c);
 
 struct Material {
 	Material(Colour ambient, Colour diffuse, Colour specular, double exp, 
-		double specularity, double refractivity) :
+		double specularity, double glossiness, double refractivity) :
 		ambient(ambient), diffuse(diffuse), specular(specular), 
-		specular_exp(exp), specularity(specularity), refractivity(refractivity){}
+		specular_exp(exp), 
+		specularity(specularity), glossiness(glossiness), refractivity(refractivity){}
 	
 	// Ambient components for Phong shading.
 	Colour ambient; 
@@ -144,6 +145,7 @@ struct Material {
 	double specular_exp;
 
 	double specularity;
+	double glossiness; // REFLECTION_SAMPLE_SQUARE_WIDTH
 	double refractivity;
 };
 

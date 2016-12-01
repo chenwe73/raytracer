@@ -146,25 +146,32 @@ private:
 	Matrix4x4 _worldToModel;
 };
 
+// functions
+Ray3D reflectionRay(Ray3D& ray, Vector3D source_dir);
+Vector3D reflect(Vector3D normal, Vector3D incident);
+Vector3D refract(Vector3D normal, Vector3D incident, double nt);
 
+// variables
 clock_t t;
 clock_t tt;
 
-int width = 1000;
+const double GOLDEN_RATIO = 1.61803398875;
+
 int height = 1000;
+int width = height * GOLDEN_RATIO;
 
 const double REFLECTION_OFFSET = 0.00001; // remove shadow acne
 const double MIN_SPECULARITY = 0.00001;
 const double MIN_REFRACTIVITY = 0.00001;
+const int MIN_GLOSSINESS = 0.00001;
 
 const int MAXDEPTH = 6;
 const int ANTIALIASING_SAMPLE = 2; // n*n per pixel
 
 const int REFLECTION_SAMPLE = 1;
-const double REFLECTION_SAMPLE_SQUARE_WIDTH = 0.0; // material dependent
 
-const int SHADOW_SAMPLE = 1;
-const double LIGHT_SQAURE_WIDTH = 4;
+const int SHADOW_SAMPLE = 50;
+const double LIGHT_SQAURE_WIDTH = 5;
 const Vector3D LIGHT_U = Vector3D(1, 0, 0);
 const Vector3D LIGHT_V = Vector3D(0, 0, 1);
 
@@ -174,53 +181,24 @@ const int FOCAL_PLANE_DIST = 13;
 const Vector3D LENS_U = Vector3D(1, 0, 0);
 const Vector3D LENS_V = Vector3D(0, 1, 0);
 
+const double Nt = 1.5; // material dependent
 
-Ray3D reflectionRay(Ray3D& ray, Vector3D source_dir);
-Vector3D reflect(Vector3D normal, Vector3D incident);
-Vector3D refract(Vector3D normal, Vector3D incident, double nt);
-
-
-// Defines a material for shading.
-Material gold(Colour(0.3, 0.3, 0.3), Colour(0.75164, 0.60648, 0.22648),
-	Colour(0.628281, 0.555802, 0.366065),
-	51.2, 0, 0);
-Material jade(Colour(0.01, 0.01, 0.01), Colour(0.54, 0.89, 0.63),
-	Colour(0.316228, 0.316228, 0.316228),
-	12.8, 0, 0);
-const Colour LIGHT_COLOR = Colour(1, 1, 1);
+// material
+const Colour LIGHT_COLOR = Colour(5, 5, 5); // controls reflection strength
+const Colour WHITE_COLOR = Colour(1, 1, 1);
 const Colour DARK_COLOR = Colour(0, 0, 0);
-Material mirror(DARK_COLOR, DARK_COLOR, LIGHT_COLOR, 50, 1, 0);
-Material glass(DARK_COLOR, DARK_COLOR, LIGHT_COLOR, 50, 1, 1);
-Material light_mat(LIGHT_COLOR, LIGHT_COLOR, LIGHT_COLOR, 0, 0, 0);
-Material white(Colour(0.1, 0.1, 0.1), Colour(0.9, 0.9, 0.9),
-	Colour(0.9, 0.9, 0.9), 10, 0, 0);
+const double wall_specularity = 0.0;
 
-Material silver(Colour(0.23125f, 0.23125f, 0.23125f), Colour(0.2775f, 0.2775f, 0.2775f),
-	Colour(0.773911f, 0.773911f, 0.773911f), 89.6f, 0.5, 0);
-Material red(Colour(0.1, 0.1, 0.1), Colour(0.9, 0.1, 0.1),
-	Colour(0.9, 0.1, 0.1), 10, 0, 0);
-Material turquoise(Colour(0.1f, 0.18725f, 0.1745f), Colour(0.396f, 0.74151f, 0.69102f),
-	Colour(0.297254f, 0.30829f, 0.306678f), 12.8f, 0, 0);
+Material light_mat(LIGHT_COLOR, LIGHT_COLOR, LIGHT_COLOR, 0, 0, 0, 0);
+Material mirror(DARK_COLOR, DARK_COLOR, WHITE_COLOR, 50, 1, 0, 0);
+Material glass(DARK_COLOR, DARK_COLOR, WHITE_COLOR, 50, 1, 0, 1);
 
-//Ruby
-float mat_ambient[] = { 0.1745f, 0.01175f, 0.01175f, 0.55f };
-float mat_diffuse[] = { 0.61424f, 0.04136f, 0.04136f, 0.55f };
-float mat_specular[] = { 0.727811f, 0.626959f, 0.626959f, 0.55f };
-float shine = 76.8f;
+Material grey(Colour(0, 0, 0), Colour(0.5, 0.5, 0.5),
+	Colour(0.3, 0.3, 0.3), 5, wall_specularity, 0, 0);
+Material red(Colour(0, 0, 0), Colour(0.6, 0.3, 0.3),
+	Colour(0.3, 0.3, 0.3), 5, wall_specularity, 0, 0);
+Material blue(Colour(0, 0, 0), Colour(0.3, 0.3, 0.6),
+	Colour(0.3, 0.3, 0.3), 5, wall_specularity, 0, 0);
 
-Material ruby(Colour(mat_ambient[0], mat_ambient[1], mat_ambient[2]), 
-	Colour(mat_diffuse[0], mat_diffuse[1], mat_diffuse[2]),
-	Colour(mat_specular[0], mat_specular[1], mat_specular[2]),
-	shine, 0, 0);
-
-
-//White rubber
-float white_rubber_mat_ambient[] = { 0.05f, 0.05f, 0.05f, 1.0f };
-float white_rubber_mat_diffuse[] = { 0.5f, 0.5f, 0.5f, 1.0f };
-float white_rubber_mat_specular[] = { 0.7f, 0.7f, 0.7f, 1.0f };
-float white_rubber_shine = 10.0f;
-
-Material white_rubber(Colour(white_rubber_mat_ambient[0], white_rubber_mat_ambient[1], white_rubber_mat_ambient[2]),
-	Colour(white_rubber_mat_diffuse[0], white_rubber_mat_diffuse[1], white_rubber_mat_diffuse[2]),
-	Colour(white_rubber_mat_specular[0], white_rubber_mat_specular[1], white_rubber_mat_specular[2]),
-	white_rubber_shine, 0, 0);
+Material ruby(Colour(0.1745f, 0.01175f, 0.01175f), Colour(0.61424f, 0.04136f, 0.04136f),
+	Colour(0.727811f, 0.626959f, 0.626959f), 76.8f, 0, 0, 0);

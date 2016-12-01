@@ -53,6 +53,6 @@ void PointLight::shade( Ray3D& ray ) {
 	ray.col = ambientC + diffuseC + specularC;
 	//ray.col = ambientC + diffuseC;
 	//ray.col = ray.intersection.mat->diffuse;
-	ray.col.clamp();
+	//ray.col.clamp();
 }
 
