@@ -188,6 +188,7 @@ void Raytracer::computeShading( Ray3D& ray ) {
 		// shade camera ray
 		curLight->light->shade(ray);
 		Point3D light_pos = curLight->light->get_position();
+		Point3D intPoint = ray.intersection.point;
 
 		int hit = 0;
 		for (int i = 0; i < SHADOW_SAMPLE; i++)
@@ -199,9 +200,9 @@ void Raytracer::computeShading( Ray3D& ray ) {
 
 			// shadow ray
 			Ray3D shadowRay;
-			shadowRay.origin = ray.intersection.point 
+			shadowRay.origin = intPoint
 				+ REFLECTION_OFFSET * ray.intersection.normal; // shadow acne
-			shadowRay.dir = light_pos_sample - ray.intersection.point;
+			shadowRay.dir = light_pos_sample - intPoint;
 			double t_light = shadowRay.dir.length();
 			shadowRay.dir.normalize();
 
@@ -211,11 +212,39 @@ void Raytracer::computeShading( Ray3D& ray ) {
 			if (!shadowRay.intersection.none && shadowRay.intersection.t_value < t_light)
 				hit++;
 		}
+
+		double r;
 		if (SHADOW_SAMPLE > 0)
 		{
-			double r = (double)hit / SHADOW_SAMPLE; // 0 ~ 1
+			r = (double)hit / SHADOW_SAMPLE; // 0 ~ 1
 			ray.col = (1 - r) * ray.col + (r)* ray.intersection.mat->ambient;
 		}
+		
+		/*
+		if (!isPhotonMapping)
+		{
+			Point3D nearest_neighbor = photonMap[0];
+			int n = 0;
+			const double MAX_CAUSTIC_DIST = 1;
+			for (int i = 0; i < photonMap.size(); i++)
+			{
+				double d = (intPoint - photonMap[i]).length();
+				if (d < MAX_CAUSTIC_DIST)
+					n++;
+				if (d < (intPoint - nearest_neighbor).length())
+					nearest_neighbor = photonMap[i];
+			}
+
+			double dist = (intPoint - nearest_neighbor).length();
+			double f = (double)n / (1.0 / 3 * PHOTON_SAMPLE); //(1 - dist / MAX_CAUSTIC_DIST)
+
+			
+			else
+				r = 0;
+
+			ray.col = (1 - r) * ray.col + f * ray.intersection.mat->specular + (r - f) * ray.intersection.mat->ambient;
+		}
+		*/
 		curLight = curLight->next;
 	}
 }
@@ -247,114 +276,135 @@ Colour Raytracer::shadeRay( Ray3D& ray, int depth ) {
 	traverseScene(_root, ray); 
 	
 	// Don't bother shading if the ray didn't hit anything.
-	if (!ray.intersection.none) {
-		computeShading(ray);
-		col = ray.col;
+	if (ray.intersection.none)
+		return BACKGROUND_COLOR;
+	
+	computeShading(ray);
+	col = ray.col;
 
-		Colour reflectCol = Colour(0, 0, 0);
-		Colour refractCol = Colour(0, 0, 0);
-		double specularity = ray.intersection.mat->specularity;
-		double refractivity = ray.intersection.mat->refractivity;
-		double glossiness = ray.intersection.mat->glossiness;
+	Colour reflectCol = Colour(0, 0, 0);
+	Colour refractCol = Colour(0, 0, 0);
+	double specularity = ray.intersection.mat->specularity;
+	double refractivity = ray.intersection.mat->refractivity;
+	double glossiness = ray.intersection.mat->glossiness;
 
-		Vector3D normal = ray.intersection.normal;
-		normal.normalize();
-		Vector3D incident = ray.dir;
-		incident.normalize();
-		double t = ray.intersection.t_value;
+	Vector3D normal = ray.intersection.normal;
+	normal.normalize();
+	Vector3D incident = ray.dir;
+	incident.normalize();
+	double t = ray.intersection.t_value;
 
-		if (depth < MAXDEPTH)
+	if (depth < MAXDEPTH)
+	{
+		if (specularity >= MIN_SPECULARITY)
 		{
-			if (specularity > MIN_SPECULARITY)
+			Vector3D reflect_dir = reflect(normal, -incident);
+
+			int reflectSample;
+			if (glossiness > MIN_GLOSSINESS && !isPhotonMapping)
+				reflectSample = REFLECTION_SAMPLE;
+			else
+				reflectSample = 1;
+
+			// sample square
+			Vector3D reflect_u = reflect_dir.cross(Vector3D(1, 0, 0));
+			if (reflect_u.length() == 0)
+				reflect_u = reflect_dir.cross(Vector3D(0, 1, 0));
+			Vector3D reflect_v = reflect_dir.cross(reflect_u);
+
+			// glossy reflection sampling
+			for (int i = 0; i < reflectSample; i++)
 			{
-				Vector3D reflect_dir = reflect(normal, -incident);
+				// random square offset
+				Vector3D reflect_dir_sample = reflect_dir
+					+ ((double)rand() / RAND_MAX - 1.0 / 2) * glossiness * reflect_u
+					+ ((double)rand() / RAND_MAX - 1.0 / 2) * glossiness * reflect_v;
 
-				int reflectSample;
-				if (glossiness > MIN_GLOSSINESS)
-					reflectSample = REFLECTION_SAMPLE;
-				else
-					reflectSample = 1;
+				// reflectionRay
+				Ray3D reflectRay;
+				reflectRay.origin =
+					ray.intersection.point + REFLECTION_OFFSET * normal; // acne
+				reflectRay.dir = reflect_dir_sample;
+				reflectRay.dir.normalize();
 
-				// sample square
-				Vector3D reflect_u = reflect_dir.cross(Vector3D(1, 0, 0));
-				if (reflect_u.length() == 0)
-					reflect_u = reflect_dir.cross(Vector3D(0, 1, 0));
-				Vector3D reflect_v = reflect_dir.cross(reflect_u);
-
-				// glossy reflection sampling
-				for (int i = 0; i < reflectSample; i++)
-				{
-					// random square offset
-					Vector3D reflect_dir_sample = reflect_dir
-						+ ((double)rand() / RAND_MAX - 1.0 / 2) * glossiness * reflect_u
-						+ ((double)rand() / RAND_MAX - 1.0 / 2) * glossiness * reflect_v;
-
-					// reflectionRay
-					Ray3D reflectRay;
-					reflectRay.origin =
-						ray.intersection.point + REFLECTION_OFFSET * normal; // acne
-					reflectRay.dir = reflect_dir_sample;
-					reflectRay.dir.normalize();
-
-					// recursive call
-					reflectCol = reflectCol + shadeRay(reflectRay, depth + 1);
-				}
-
-				reflectCol = 1.0 / reflectSample * reflectCol;
-				col = (1 - specularity) * col + specularity * reflectCol;
+				// recursive call
+				reflectCol = reflectCol + shadeRay(reflectRay, depth + 1);
 			}
 
-			if (refractivity > MIN_REFRACTIVITY)
+			reflectCol = 1.0 / reflectSample * reflectCol;
+			col = (1 - specularity) * col + specularity * reflectCol;
+		}
+
+		if (refractivity >= MIN_REFRACTIVITY)
+		{
+			const double a0 = 0;
+			const double a1 = 0;
+			const double a2 = 0.4;
+			double cosA = incident.dot(normal);
+			double k0;
+			double k1;
+			double k2;
+
+			Vector3D refract_dir;
+			double c;
+			if (cosA < 0)
 			{
-				const double a0 = 0;
-				const double a1 = 0;
-				const double a2 = 0.4;
-				double cosA = incident.dot(normal);
-				double k0;
-				double k1;
-				double k2;
-
-				Vector3D refract_dir;
-				double c;
-				if (cosA < 0)
-				{
-					refract_dir = refract(normal, incident, Nt);
-					c = -cosA;
-					k0 = 1;
-					k1 = 1;
-					k2 = 1;
-				}
-				else
-				{
-					refract_dir = refract(-normal, incident, 1.0 / Nt);
-					c = refract_dir.dot(normal);
-					k0 = exp(-a0*t);
-					k1 = exp(-a1*t);
-					k2 = exp(-a2*t);
-				}
-
-				// refractRay
-				Ray3D refractRay;
-				refractRay.origin =ray.intersection.point + REFLECTION_OFFSET * refract_dir; // acne
-				refractRay.dir = refract_dir;
-				refractRay.dir.normalize();
-
-				refractCol = shadeRay(refractRay, depth + 1);
-
-				double R0 = ((Nt - 1) * (Nt - 1)) / ((Nt + 1) * (Nt + 1));
-				double d = 1 - c;
-				double R = R0 + (1 - R0) * (d*d*d*d*d);
-
-				col = (R * reflectCol + (1 - R) * refractCol);
-				col[0] = k0 * col[0];
-				col[1] = k1 * col[1];
-				col[2] = k2 * col[2];
+				refract_dir = refract(normal, incident, Nt);
+				c = -cosA;
+				k0 = 1;
+				k1 = 1;
+				k2 = 1;
 			}
+			else
+			{
+				refract_dir = refract(-normal, incident, 1.0 / Nt);
+				c = refract_dir.dot(normal);
+				k0 = exp(-a0*t);
+				k1 = exp(-a1*t);
+				k2 = exp(-a2*t);
+				isCaustic = true;
+			}
+
+			// refractRay
+			Ray3D refractRay;
+			refractRay.origin =ray.intersection.point + REFLECTION_OFFSET * refract_dir; // acne
+			refractRay.dir = refract_dir;
+			refractRay.dir.normalize();
+
+			refractCol = shadeRay(refractRay, depth + 1);
+			isCaustic = false;
+
+			double R0 = ((Nt - 1) * (Nt - 1)) / ((Nt + 1) * (Nt + 1));
+			double d = 1 - c;
+			double R = R0 + (1 - R0) * (d*d*d*d*d);
+
+			col = (R * reflectCol + (1 - R) * refractCol);
+			col[0] = k0 * col[0];
+			col[1] = k1 * col[1];
+			col[2] = k2 * col[2];
 		}
 	}
-	else
-	{ // background color
-		col = Colour(0, 0, 0);
+	/*
+	if (isPhotonMapping && depth < MAXDEPTH_PHOTON && specularity < MIN_SPECULARITY)
+	{
+		Vector3D reflect_dir = reflect(normal, -incident);
+
+		// reflectionRay
+		Ray3D reflectRay;
+		reflectRay.origin =
+			ray.intersection.point + REFLECTION_OFFSET * normal; // acne
+		reflectRay.dir = reflect_dir;
+		reflectRay.dir.normalize();
+
+		// recursive call
+		reflectCol = reflectCol + shadeRay(reflectRay, depth + 1);
+	}
+	*/
+	if (isPhotonMapping)
+	{
+		bool isDiffuse = refractivity < MIN_REFRACTIVITY; // && specularity < MIN_SPECULARITY;
+		if ((isDiffuse || depth == MAXDEPTH) && isCaustic) // || depth == MAXDEPTH_PHOTON
+			photonMap.push_back(ray.intersection.point);
 	}
 
 	if (depth == 1)
@@ -432,40 +482,21 @@ void Raytracer::render( int width, int height, Point3D eye, Vector3D view,
 		t = clock();
 		double total_time = (double)(clock() - tt) / CLOCKS_PER_SEC;
 		std::cout << "row = " << i << " | " << "row time = " << time 
-			<< " | " << "totoal time = " << total_time << "\n";
+			<< "(s) | " << "total time = " << total_time << "(s) \n";
 	}
 
 	flushPixelBuffer(fileName);
 }
 
-void setupScene(Raytracer &raytracer)
+void setupScene(Raytracer& raytracer)
 {
-	//return raytracer;
-}
-
-int main(int argc, char* argv[])
-{
-	tt = clock();
-	std::cout << "rendering... \n";
-	// Build your scene and setup your camera here, by calling 
-	// functions from Raytracer.  The code here sets up an example
-	// scene and renders it from two different view points, DO NOT
-	// change this if you're just implementing part one of the 
-	// assignment.  
-	Raytracer raytracer;
-
-	if (argc == 3) {
-		width = atoi(argv[1]);
-		height = atoi(argv[2]);
-	}
-
-	// Defines a point light source.
-	raytracer.addLightSource( new PointLight(Point3D(0, 4.9, 0), Colour(0.9, 0.9, 0.9) ) );
+	// light source.
+	raytracer.addLightSource(new PointLight(LIGHT_POS, Colour(0.9, 0.9, 0.9)));
 
 	// sphere
 	double factor1[3] = { 2.5, 2.5, 2.5 };
 	SceneDagNode* sphere = raytracer.addObject(new UnitSphere(), &glass);
-	raytracer.translate(sphere, Vector3D(5, -2.5, 1));	
+	raytracer.translate(sphere, Vector3D(5, -2.5, 1));
 	raytracer.scale(sphere, Point3D(0, 0, 0), factor1);
 	
 	SceneDagNode* sphere2 = raytracer.addObject(new UnitSphere(), &mirror);
@@ -475,17 +506,17 @@ int main(int argc, char* argv[])
 	//SceneDagNode* sphere3 = raytracer.addObject(new UnitSphere(), &ruby);
 	//raytracer.translate(sphere3, Vector3D(2, 2, -4));
 	//raytracer.scale(sphere3, Point3D(0, 0, 0), factor1);
-	
+
 	double f = 10;
 	double factor2[3] = { 20, 20, 20 };
 	// floor
 	SceneDagNode* floor = raytracer.addObject(new UnitSquare(), &grey);
-	raytracer.translate(floor, Vector3D(0, -f/2, 0));
+	raytracer.translate(floor, Vector3D(0, -f / 2, 0));
 	raytracer.rotate(floor, 'x', 90);
 	raytracer.scale(floor, Point3D(0, 0, 0), factor2);
 	// backWall
 	SceneDagNode* backWall = raytracer.addObject(new UnitSquare(), &grey);
-	raytracer.translate(backWall, Vector3D(0, 0, -f/2));
+	raytracer.translate(backWall, Vector3D(0, 0, -f / 2));
 	raytracer.rotate(backWall, 'z', 0);
 	raytracer.scale(backWall, Point3D(0, 0, 0), factor2);
 	// leftWall
@@ -500,16 +531,19 @@ int main(int argc, char* argv[])
 	raytracer.scale(rightWall, Point3D(0, 0, 0), factor2);
 	// ceiling
 	SceneDagNode* ceiling = raytracer.addObject(new UnitSquare(), &grey);
-	raytracer.translate(ceiling, Vector3D(0, +f/2, 0));
+	raytracer.translate(ceiling, Vector3D(0, +f / 2, 0));
 	raytracer.rotate(ceiling, 'x', -90);
 	raytracer.scale(ceiling, Point3D(0, 0, 0), factor2);
 	// light plane
 	double ligth_size[3] = { LIGHT_SQAURE_WIDTH, LIGHT_SQAURE_WIDTH, LIGHT_SQAURE_WIDTH };
 	SceneDagNode* lightPlane = raytracer.addObject(new UnitSquare(), &light_mat);
-	raytracer.translate(lightPlane, Vector3D(0, f/2 - 0.01, 0));
+	raytracer.translate(lightPlane, Vector3D(0, f / 2 - 0.01, 0));
 	raytracer.rotate(lightPlane, 'x', -90);
 	raytracer.scale(lightPlane, Point3D(0, 0, 0), ligth_size);
-	
+}
+
+void renderScene(Raytracer& raytracer)
+{
 	// Render the scene
 	// Camera parameters.
 	Point3D eye(0, 0, 15);
@@ -518,17 +552,62 @@ int main(int argc, char* argv[])
 	double fov = 50;
 	char fileName[] = "view1.bmp";
 	raytracer.render(width, height, eye, view, up, fov, fileName);
-	
+
 	// Render it from a different point of view.
 	Point3D eye2(4.5, 4.5, 4.5);
 	Vector3D view2(-1, -1, -1);
 	char fileName2[] = "view2.bmp";
 	//raytracer.render(width, height, eye2, view2, up, fov, fileName2);
-	
+
 	Point3D eye3(0, 0, -100);
 	Vector3D view3(0, 0, 1);
 	char fileName3[] = "view3.bmp";
 	//raytracer.render(width, height, eye3, view3, up, fov, fileName3);
+}
+
+int main(int argc, char* argv[])
+{
+	tt = clock();
+	Raytracer raytracer;
+
+	if (argc == 3) {
+		width = atoi(argv[1]);
+		height = atoi(argv[2]);
+	}
+
+	setupScene(raytracer);
+	/*
+	isPhotonMapping = true;
+	
+	for (int i = 0; i < PHOTON_SAMPLE; i++)
+	{
+		// sample lfight position
+		Point3D light_pos_sample = LIGHT_POS
+			+ ((double)rand() / RAND_MAX - 1.0 / 2) * LIGHT_SQAURE_WIDTH * LIGHT_U
+			+ ((double)rand() / RAND_MAX - 1.0 / 2) * LIGHT_SQAURE_WIDTH * LIGHT_V;
+		
+		// sample light direction
+		//Vector3D light_dir_sample = ((double)rand() / RAND_MAX / 2) * Vector3D(0, -1, 0)
+		//	 + ((double)rand() / RAND_MAX - 1.0 / 2) * LIGHT_U
+		//	 + ((double)rand() / RAND_MAX - 1.0 / 2) * LIGHT_V;
+		
+		// photon ray
+		Ray3D photonRay;
+		photonRay.origin = light_pos_sample;
+		photonRay.dir = (Point3D(5, -2.5, 1) - LIGHT_POS); //light_dir_sample; 
+		photonRay.dir.normalize();
+
+		raytracer.shadeRay(photonRay, 1);
+	}
+	
+	std::cout << "photon = " << photonMap.size() << " \n";
+	//for (int i = 0; i < photonMap.size(); i++)
+	//	std::cout << photonMap[i] << " \n";
+	
+	isPhotonMapping = false;
+	*/
+	std::cout << "rendering... \n";
+	renderScene(raytracer);
 	
 	return 0;
 }

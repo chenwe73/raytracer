@@ -16,6 +16,7 @@
 #include "light_source.h"
 
 #include <time.h>
+#include <vector>
 
 // Linked list containing light sources in the scene.
 struct LightListNode {
@@ -100,6 +101,10 @@ public:
 
 	// Apply scaling about a fixed point origin.
 	void scale( SceneDagNode* node, Point3D origin, double factor[3] );
+
+	// Return the colour of the ray after intersection and shading, call 
+	// this function recursively for reflection and refraction.  
+	Colour shadeRay(Ray3D& ray, int depth);
 	
 private:
 	// Allocates and initializes the pixel buffer for rendering, you
@@ -109,10 +114,6 @@ private:
 
 	// Saves the pixel buffer to a file and deletes the buffer.
 	void flushPixelBuffer(char *file_name);
-
-	// Return the colour of the ray after intersection and shading, call 
-	// this function recursively for reflection and refraction.  
-	Colour shadeRay(Ray3D& ray, int depth);
 
 	// Constructs a view to world transformation matrix based on the
 	// camera parameters.
@@ -150,6 +151,8 @@ private:
 Ray3D reflectionRay(Ray3D& ray, Vector3D source_dir);
 Vector3D reflect(Vector3D normal, Vector3D incident);
 Vector3D refract(Vector3D normal, Vector3D incident, double nt);
+void setupScene(Raytracer& raytracer);
+void renderScene(Raytracer& raytracer);
 
 // variables
 clock_t t;
@@ -157,20 +160,21 @@ clock_t tt;
 
 const double GOLDEN_RATIO = 1.61803398875;
 
-int height = 1000;
-int width = height * GOLDEN_RATIO;
+int height = 300;
+int width = (int)round(height * GOLDEN_RATIO);
 
 const double REFLECTION_OFFSET = 0.00001; // remove shadow acne
 const double MIN_SPECULARITY = 0.00001;
 const double MIN_REFRACTIVITY = 0.00001;
-const int MIN_GLOSSINESS = 0.00001;
+const double MIN_GLOSSINESS = 0.00001;
 
-const int MAXDEPTH = 6;
-const int ANTIALIASING_SAMPLE = 2; // n*n per pixel
+const int MAXDEPTH = 4;
+const int ANTIALIASING_SAMPLE = 1; // n*n per pixel
 
 const int REFLECTION_SAMPLE = 1;
 
-const int SHADOW_SAMPLE = 50;
+const int SHADOW_SAMPLE = 1;
+const Point3D LIGHT_POS = Point3D(0, 4.9, 0);
 const double LIGHT_SQAURE_WIDTH = 5;
 const Vector3D LIGHT_U = Vector3D(1, 0, 0);
 const Vector3D LIGHT_V = Vector3D(0, 0, 1);
@@ -184,13 +188,14 @@ const Vector3D LENS_V = Vector3D(0, 1, 0);
 const double Nt = 1.5; // material dependent
 
 // material
+const Colour BACKGROUND_COLOR = Colour(0, 0, 0);
 const Colour LIGHT_COLOR = Colour(5, 5, 5); // controls reflection strength
 const Colour WHITE_COLOR = Colour(1, 1, 1);
 const Colour DARK_COLOR = Colour(0, 0, 0);
-const double wall_specularity = 0.0;
+const double wall_specularity = 0.1;
 
 Material light_mat(LIGHT_COLOR, LIGHT_COLOR, LIGHT_COLOR, 0, 0, 0, 0);
-Material mirror(DARK_COLOR, DARK_COLOR, WHITE_COLOR, 50, 1, 0, 0);
+Material mirror(DARK_COLOR, DARK_COLOR, WHITE_COLOR, 50, 1, 0.0, 0);
 Material glass(DARK_COLOR, DARK_COLOR, WHITE_COLOR, 50, 1, 0, 1);
 
 Material grey(Colour(0, 0, 0), Colour(0.5, 0.5, 0.5),
@@ -202,3 +207,10 @@ Material blue(Colour(0, 0, 0), Colour(0.3, 0.3, 0.6),
 
 Material ruby(Colour(0.1745f, 0.01175f, 0.01175f), Colour(0.61424f, 0.04136f, 0.04136f),
 	Colour(0.727811f, 0.626959f, 0.626959f), 76.8f, 0, 0, 0);
+
+const int PHOTON_SAMPLE = 0;
+//const int MAXDEPTH_PHOTON = 2;
+std::vector<Point3D> photonMap;
+//std::vector<Colour> photonMap_colour;
+bool isPhotonMapping;
+bool isCaustic = false;
